@@ -157,7 +157,7 @@ async function handleMessage(payload: HMRPayload) {
       await Promise.all(
         payload.updates.map(async (update): Promise<void> => {
           if (update.type === 'js-update') {
-            return queueUpdate(fetchUpdate(update))
+            return queueUpdate(() => fetchUpdate(update))
           }
 
           // css-update
@@ -289,14 +289,14 @@ function hasErrorOverlay() {
 }
 
 let pending = false
-let queued: Promise<(() => void) | undefined>[] = []
+let queued: (() => Promise<(() => void) | undefined>)[] = []
 
 /**
  * buffer multiple hot updates triggered by the same src change
  * so that they are invoked in the same order they were sent.
  * (otherwise the order may be inconsistent because of the http request round trip)
  */
-async function queueUpdate(p: Promise<(() => void) | undefined>) {
+async function queueUpdate(p: () => Promise<(() => void) | undefined>) {
   queued.push(p)
   if (!pending) {
     pending = true
@@ -304,7 +304,9 @@ async function queueUpdate(p: Promise<(() => void) | undefined>) {
     pending = false
     const loading = [...queued]
     queued = []
-    ;(await Promise.all(loading)).forEach((fn) => fn && fn())
+    for (const p of loading) {
+      (await p())?.();
+    }
   }
 }
 
